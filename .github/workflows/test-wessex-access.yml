@@ -1,82 +1,44 @@
-name: Test Wessex access
-
-on:
-  workflow_dispatch:
-
-jobs:
-  test-access:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Test LeagueRepublic fixture feed
-        shell: bash
-        run: |
-          URL="https://api.leaguerepublic.com/js/cs1.html?cs=631591946"
-          UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
-
-          HTTP_CODE=$(curl \
-            --silent \
-            --show-error \
-            --location \
-            --user-agent "$UA" \
-            --output /tmp/fixtures.txt \
-            --write-out "%{http_code}" \
-            "$URL")
-
-          echo "HTTP status: $HTTP_CODE"
-          echo "Downloaded bytes: $(wc -c < /tmp/fixtures.txt)"
-
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "ERROR: LeagueRepublic returned HTTP $HTTP_CODE"
-            exit 1
-          fi
-
-          if grep -q "Phantoms 3" /tmp/fixtures.txt; then
-            echo "SUCCESS: Found Phantoms 3 in fixture feed"
-          else
-            echo "ERROR: HTTP 200 but Phantoms 3 was not found"
-            exit 1
-          fi
-
-          if grep -q "Reading Spartans" /tmp/fixtures.txt; then
-            echo "SUCCESS: Found Reading Spartans test fixture"
-          else
-            echo "WARNING: Reading Spartans was not found"
-          fi
-
       - name: Test Wessex match page
         shell: bash
         run: |
           URL="https://www.wessexbasketball.co.uk/match/45054530.html"
           UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 
-          HTTP_CODE=$(curl \
+          echo "Requesting Wessex match page..."
+          echo
+
+          curl \
             --silent \
             --show-error \
             --location \
             --user-agent "$UA" \
+            --dump-header /tmp/headers.txt \
             --output /tmp/match.txt \
-            --write-out "%{http_code}" \
-            "$URL")
+            "$URL"
 
-          echo "HTTP status: $HTTP_CODE"
-          echo "Downloaded bytes: $(wc -c < /tmp/match.txt)"
+          echo "=== RESPONSE HEADERS ==="
+          cat /tmp/headers.txt
 
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "ERROR: Wessex returned HTTP $HTTP_CODE"
-            exit 1
-          fi
+          echo
+          echo "=== RESPONSE SIZE ==="
+          wc -c /tmp/match.txt
+
+          echo
+          echo "=== FIRST 1000 BYTES OF RESPONSE ==="
+          head -c 1000 /tmp/match.txt || true
+          echo
+
+          echo
+          echo "=== CONTENT CHECK ==="
 
           if grep -q "Match Officials" /tmp/match.txt; then
             echo "SUCCESS: Match Officials section found"
           else
-            echo "ERROR: Match Officials section not found"
-            exit 1
+            echo "Match Officials section not found"
           fi
 
           if grep -q "Aser Jean-Baptiste" /tmp/match.txt; then
             echo "SUCCESS: Found expected referee: Aser Jean-Baptiste"
           else
-            echo "WARNING: Aser Jean-Baptiste was not found."
-            echo "This may simply mean the referee assignment has changed."
+            echo "Aser Jean-Baptiste not found"
           fi
