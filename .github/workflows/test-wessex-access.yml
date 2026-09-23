@@ -8,13 +8,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Test LeagueRepublic fixture feed
+      - name: Confirm LeagueRepublic fixture feed
         shell: bash
         run: |
           URL="https://api.leaguerepublic.com/js/cs1.html?cs=631591946"
           UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 
-          HTTP_CODE=$(curl \
+          CODE=$(curl \
             --silent \
             --show-error \
             --location \
@@ -23,68 +23,89 @@ jobs:
             --write-out "%{http_code}" \
             "$URL")
 
-          echo "HTTP status: $HTTP_CODE"
+          echo "HTTP status: $CODE"
           echo "Downloaded bytes: $(wc -c < /tmp/fixtures.txt)"
 
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "ERROR: LeagueRepublic returned HTTP $HTTP_CODE"
-            exit 1
-          fi
+          grep -q "Phantoms 3" /tmp/fixtures.txt
+          echo "SUCCESS: Phantoms 3 fixture feed retrieved"
 
-          if grep -q "Phantoms 3" /tmp/fixtures.txt; then
-            echo "SUCCESS: Found Phantoms 3 in fixture feed"
-          else
-            echo "ERROR: HTTP 200 but Phantoms 3 was not found"
-            exit 1
-          fi
-
-          if grep -q "Reading Spartans" /tmp/fixtures.txt; then
-            echo "SUCCESS: Found Reading Spartans test fixture"
-          else
-            echo "WARNING: Reading Spartans was not found"
-          fi
-
-      - name: Diagnose Wessex match page
+      - name: Test Wessex request variants
         shell: bash
         run: |
           URL="https://www.wessexbasketball.co.uk/match/45054530.html"
           UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 
-          echo "Requesting Wessex match page..."
-          echo
+          test_request () {
+            NAME="$1"
+            shift
 
-          curl \
-            --silent \
-            --show-error \
-            --location \
-            --user-agent "$UA" \
-            --dump-header /tmp/headers.txt \
-            --output /tmp/match.txt \
-            "$URL"
+            echo
+            echo "========================================"
+            echo "TEST: $NAME"
+            echo "========================================"
 
-          echo "=== RESPONSE HEADERS ==="
-          cat /tmp/headers.txt
+            CODE=$(curl \
+              --silent \
+              --show-error \
+              --location \
+              "$@" \
+              --user-agent "$UA" \
+              --output /tmp/wessex-response.txt \
+              --write-out "%{http_code}" \
+              "$URL")
 
-          echo
-          echo "=== RESPONSE SIZE ==="
-          wc -c /tmp/match.txt
+            SIZE=$(wc -c < /tmp/wessex-response.txt)
 
-          echo
-          echo "=== FIRST 1000 BYTES OF RESPONSE ==="
-          head -c 1000 /tmp/match.txt || true
-          echo
+            echo "HTTP status: $CODE"
+            echo "Downloaded bytes: $SIZE"
 
-          echo
-          echo "=== CONTENT CHECK ==="
+            if grep -q "Match Officials" /tmp/wessex-response.txt; then
+              echo "SUCCESS: Match Officials found"
 
-          if grep -q "Match Officials" /tmp/match.txt; then
-            echo "SUCCESS: Match Officials section found"
-          else
-            echo "Match Officials section not found"
-          fi
+              if grep -q "Aser Jean-Baptiste" /tmp/wessex-response.txt; then
+                echo "SUCCESS: Aser Jean-Baptiste found"
+              fi
+            else
+              echo "Match Officials not found"
+            fi
+          }
 
-          if grep -q "Aser Jean-Baptiste" /tmp/match.txt; then
-            echo "SUCCESS: Found expected referee: Aser Jean-Baptiste"
-          else
-            echo "Aser Jean-Baptiste not found"
-          fi
+          test_request \
+            "A - Current request"
+
+          test_request \
+            "B - Force HTTP/1.1" \
+            --http1.1
+
+          test_request \
+            "C - Force IPv4" \
+            --ipv4
+
+          test_request \
+            "D - HTTP/1.1 plus IPv4" \
+            --http1.1 \
+            --ipv4
+
+          test_request \
+            "E - Browser-style headers" \
+            --header "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8" \
+            --header "Accept-Language: en-GB,en;q=0.9" \
+            --header "Cache-Control: no-cache" \
+            --header "Pragma: no-cache" \
+            --header "Upgrade-Insecure-Requests: 1"
+
+          test_request \
+            "F - Browser headers plus HTTP/1.1 and IPv4" \
+            --http1.1 \
+            --ipv4 \
+            --header "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8" \
+            --header "Accept-Language: en-GB,en;q=0.9" \
+            --header "Cache-Control: no-cache" \
+            --header "Pragma: no-cache" \
+            --header "Upgrade-Insecure-Requests: 1"
+
+      - name: Summary
+        shell: bash
+        run: |
+          echo "Diagnostic run complete."
+          echo "Compare HTTP status and downloaded byte count for tests A-F."
